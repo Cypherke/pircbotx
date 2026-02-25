@@ -383,10 +383,21 @@ public class DccHandler implements Closeable {
 		checkNotNull(destination, "Destination file cannot be null");
 		checkArgument(pendingTransfer.position >= 0, "Start position %s must be positive", pendingTransfer.position);
 
+		if (shuttingDown) {
+			FileTransferStatus fileTransferStatus = new FileTransferStatus(0, pendingTransfer.position);
+			fileTransferStatus.exception = new DccException(DccException.Reason.FILE_TRANSFER_CANCELLED,
+					pendingTransfer.event.getUser(), "Transfer " + pendingTransfer.event + " canceled due to bot shutting down");
+			bot.getConfiguration().getListenerManager()
+					.onEvent(new FileTransferCompleteEvent(bot, fileTransferStatus, pendingTransfer.event.getUser(),
+							pendingTransfer.event.getSafeFilename(), null, pendingTransfer.event.getPort(),
+							pendingTransfer.event.getFilesize(), pendingTransfer.event.isPassive(), false));
+			return null;
+		}
+
 		ReceiveFileTransfer receiveFileTransfer = bot.getConfiguration().getBotFactory().createReceiveFileTransfer(bot,
 				this, pendingTransfer, destination);
 
-		activeSendTransfers.submit(() -> {
+		activeReceiveTransfers.submit(() -> {
 			receiveFileTransfer.transfer();
 		});
 
