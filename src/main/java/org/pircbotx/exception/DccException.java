@@ -29,7 +29,7 @@ public class DccException extends RuntimeException {
 	@Getter
 	protected final Reason ourReason;
 	@Getter
-	protected final User user;
+	protected final transient User user;
 
 	public DccException(Reason reason, User user, String detail, Throwable cause) {
 		super(generateMessage(reason, user, detail), cause);
