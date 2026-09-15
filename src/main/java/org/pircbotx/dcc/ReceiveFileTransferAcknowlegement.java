@@ -38,7 +38,7 @@ public class ReceiveFileTransferAcknowlegement extends Thread {
 	protected SocketChannel inChannel;
 	protected FileChannel outChannel;
 	protected ByteBuffer byteBuffer = ByteBuffer.wrap(new byte[4]);
-	protected Boolean running = true;
+	protected volatile boolean running = true;
 	protected long totalBytesAcknowleged = 0;
 	protected int previousBytesAcknowleged = 0;
 

@@ -22,17 +22,15 @@ import java.util.concurrent.TimeUnit;
 import org.pircbotx.exception.DccException;
 
 import lombok.Getter;
-import lombok.extern.slf4j.Slf4j;
 
 /**
  * Information about a file transfer This is kept in sync by the instances of
  * SendFileTransfer and ReceiveFileTransfer
  */
-@Slf4j
 public class FileTransferStatus extends Thread {
 
 	@Getter
-	protected DccState dccState = DccState.INIT;
+	protected volatile DccState dccState = DccState.INIT;
 	@Getter
 	protected long startPosition = 0;
 	@Getter
@@ -91,7 +89,7 @@ public class FileTransferStatus extends Thread {
 			try {
 				TimeUnit.SECONDS.sleep(1);
 			} catch (InterruptedException e) {
-				log.error("Speed calculation has interrupted?", e);
+				break;
 			}
 			bytesPerSecond = bytesAcknowledged - myBytesAcknowleged;
 			if (bytesPerSecond < 0) {
