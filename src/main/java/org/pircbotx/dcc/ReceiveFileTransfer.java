@@ -76,6 +76,7 @@ public class ReceiveFileTransfer extends FileTransfer {
 			log.info("Receive file transfer of file {} entered {} state for server to close the socket", file.getName(),
 					fileTransferStatus.dccState);
 			try {
+				fileTransferStatus.interrupt();
 				fileTransferStatus.join();
 
 				fileTransferStatus.dccState = DccState.DONE;

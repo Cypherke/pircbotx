@@ -87,6 +87,7 @@ public class SendFileTransfer extends FileTransfer {
 
 			try {
 				acknowledgement.join();
+				fileTransferStatus.interrupt();
 				fileTransferStatus.join();
 
 				fileTransferStatus.dccState = DccState.DONE;
