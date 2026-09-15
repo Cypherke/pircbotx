@@ -20,6 +20,7 @@ package org.pircbotx.dcc;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.SocketChannel;
 
@@ -47,13 +48,14 @@ public class ReceiveFileTransfer extends FileTransfer {
 	@Override
 	protected void transferFile() {
 
-		long bytesToRead = configuration.getDccPacketSize();
+		ByteBuffer buffer = ByteBuffer.allocateDirect(configuration.getDccPacketSize());
 
 		try (SocketChannel inChannel = socket.getChannel();
 				RandomAccessFile outputStream = new RandomAccessFile(file, "rw");
 				FileChannel outChannel = outputStream.getChannel();) {
 
-			acknowledge = new SendFileTransferAcknowlegement(inChannel, outChannel);
+			acknowledge = new SendFileTransferAcknowlegement(inChannel, fileTransferStatus.startPosition);
+			acknowledge.start();
 			fileTransferStatus.start();
 
 			outChannel.position(fileTransferStatus.startPosition);
@@ -62,14 +64,32 @@ public class ReceiveFileTransfer extends FileTransfer {
 					break;
 				}
 
-				if (bytesToRead > (fileTransferStatus.fileSize - outChannel.position())) {
-					bytesToRead = (fileTransferStatus.fileSize - outChannel.position());
+				buffer.clear();
+				long remaining = fileTransferStatus.fileSize - outChannel.position();
+				if (remaining < buffer.capacity()) {
+					buffer.limit((int) remaining);
 				}
-				outChannel.position(
-						outChannel.position() + outChannel.transferFrom(inChannel, outChannel.position(), bytesToRead));
 
-				fileTransferStatus.bytesTransfered = outChannel.position();
-				fileTransferStatus.bytesAcknowledged = acknowledge.call();
+				int bytesRead = inChannel.read(buffer);
+				if (bytesRead < 0) {
+					break;
+				}
+
+				buffer.flip();
+				outChannel.write(buffer);
+
+				long currentPosition = outChannel.position();
+				fileTransferStatus.bytesTransfered = currentPosition;
+				fileTransferStatus.bytesAcknowledged = acknowledge.update(currentPosition);
+			}
+
+			// Signal ACK thread to send the final position and stop
+			acknowledge.running = false;
+			acknowledge.update(outChannel.position());
+			try {
+				acknowledge.join(5000);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
 			}
 
 			fileTransferStatus.dccState = DccState.WAITING;

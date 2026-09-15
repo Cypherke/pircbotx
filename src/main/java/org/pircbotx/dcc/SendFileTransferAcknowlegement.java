@@ -19,38 +19,61 @@ package org.pircbotx.dcc;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 import java.nio.channels.SocketChannel;
-import java.util.concurrent.Callable;
+import java.util.concurrent.Semaphore;
+
+import lombok.extern.slf4j.Slf4j;
 
 /**
- * Send current number of bytes received from a file transfer
+ * Send current number of bytes received from a file transfer.
+ * Runs as a separate thread so that a blocked write never stalls the receive loop.
  */
-public class SendFileTransferAcknowlegement implements Callable<Long> {
+@Slf4j
+public class SendFileTransferAcknowlegement extends Thread {
 
-	protected SocketChannel socketChannel;
-	protected FileChannel fileChannel;
+	protected final SocketChannel socketChannel;
+	protected volatile long positionToAck;
+	protected volatile boolean running = true;
+	private final Semaphore pending = new Semaphore(0);
 
-	public SendFileTransferAcknowlegement(SocketChannel socketChannel, FileChannel fileChannel) {
+	public SendFileTransferAcknowlegement(SocketChannel socketChannel, long startPosition) {
 		this.socketChannel = socketChannel;
-		this.fileChannel = fileChannel;
-	}
-
-	@Override
-	public Long call() throws IOException {
-		sendAcknowledge();
-		return fileChannel.position();
+		this.positionToAck = startPosition;
+		setDaemon(true);
 	}
 
 	/**
-	 * Send acknowledge bytes
-	 * 
-	 * @param SocketChannel
-	 * @param FileChannel
-	 * @throws IOException
+	 * Signal the ACK thread to send the given position.
+	 * Returns the position for use as bytesAcknowledged.
 	 */
-	protected void sendAcknowledge() throws IOException {
-		socketChannel.write(ByteBuffer.allocate(4).putInt(0, (int) fileChannel.position()));
+	public long update(long position) {
+		positionToAck = position;
+		pending.release();
+		return position;
+	}
+
+	@Override
+	public void run() {
+		try {
+			while (running) {
+				pending.acquire();
+				pending.drainPermits();
+				sendAcknowledge(positionToAck);
+			}
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+		} catch (IOException e) {
+			log.debug("ACK send failed, socket likely closed: {}", e.getMessage());
+		}
+	}
+
+	protected void sendAcknowledge(long position) throws IOException {
+		ByteBuffer buf = ByteBuffer.allocate(4);
+		buf.putInt((int) position);
+		buf.flip();
+		while (buf.hasRemaining()) {
+			socketChannel.write(buf);
+		}
 	}
 
 }
